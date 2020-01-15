@@ -1,4 +1,4 @@
-FROM php:7.2.0-apache-stretch as builder
+FROM php:7.3-apache-buster as builder
 
 
 # The version and repository to clone koel from.
@@ -12,61 +12,36 @@ ARG COMPOSER_VERSION=1.1.2
 ARG NODE_VERSION=node_8.x
 
 # Install dependencies to install dependencies.
-RUN apt-get update && apt-get install --yes \
-  gnupg2 \
-  apt-transport-https
+RUN apt-get update
 
-# Add node repository.
-RUN curl --silent https://deb.nodesource.com/gpgkey/nodesource.gpg.key \
-    | apt-key add - && \
-  echo "deb https://deb.nodesource.com/${NODE_VERSION} stretch main" \
-    | tee /etc/apt/sources.list.d/nodesource.list && \
-  echo "deb-src https://deb.nodesource.com/${NODE_VERSION} stretch main" \
-    | tee --append /etc/apt/sources.list.d/nodesource.list
-
-# Add yarn repository.
-RUN curl --silent --show-error https://dl.yarnpkg.com/debian/pubkey.gpg \
-    | apt-key add - && \
-  echo "deb https://dl.yarnpkg.com/debian/ stable main" \
-    | tee /etc/apt/sources.list.d/yarn.list
+RUN rm /etc/apt/preferences.d/no-debian-php
 
 # These are dependencies needed both at build time and at runtime.
 ARG RUNTIME_DEPS="\
   libxml2-dev \
   zlib1g-dev \
   libcurl4-openssl-dev \
-  libpng-dev"
+  libpng-dev \
+  composer \
+  php-zip \
+  php-mbstring \
+  php-curl \
+  php-xml \
+  php-exif"
 
 # Install dependencies.
 RUN apt-get update && \
   apt-get install --yes \
+  yarnpkg \
   nodejs \
-  yarn \
   git \
   ${RUNTIME_DEPS}
-
-# Install composer from getcomposer.org. An apk package is only available in
-# edge (> 3.7).
-RUN curl -sS https://getcomposer.org/installer \
-    | php -- \
-          --install-dir=/usr/local/bin \
-          --filename=composer \
-          --version=${COMPOSER_VERSION} && \
-	chmod +x /usr/local/bin/composer && \
-  composer --version
-
-ARG PHP_BUILD_DEPS="zip mbstring curl xml exif"
-
-# The repo version wasn't working so using docker-php-ext-install instead. Not
-# using docker-php-ext-install for every extension because it is badly
-# documented.
-RUN docker-php-ext-install ${PHP_BUILD_DEPS}
 
 # Change to a restricted user.
 USER www-data
 
 # Clone the koel repository.
-RUN git clone ${KOEL_CLONE_SOURCE} -b ${KOEL_VERSION_REF} /tmp/koel
+RUN git clone --recurse-submodules ${KOEL_CLONE_SOURCE} -b ${KOEL_VERSION_REF} /tmp/koel
 
 # Place artifacts here.
 WORKDIR /tmp/koel
@@ -74,10 +49,12 @@ WORKDIR /tmp/koel
 # Install runtime dependencies.
 RUN composer install
 USER 0
-RUN yarn install
+
+# Debian insists that yarnpkg is the name of the command
+RUN yarnpkg install
 
 # The runtime image.
-FROM php:7.2.0-apache-stretch
+FROM php:7.3-apache-buster
 
 # These are dependencies needed both at build time and at runtime. This is
 # repeated because docker doesn't seem to have a way to share args across build
@@ -87,21 +64,31 @@ ARG RUNTIME_DEPS="\
   zlib1g-dev \
   libxml2-dev \
   faad \
-  ffmpeg"
+  ffmpeg \
+  composer \
+  php-curl \
+  php-xml \
+  php-zip \
+  php-pdo \
+  php-mysql \
+  php-exif"
 
-ARG PHP_RUNTIME_DEPS="\
-  mbstring \
-  curl \
-  xml \
-  zip \
-  pdo \
-  pdo_mysql \
-  exif"
+# Clean up
+RUN rm /etc/apt/preferences.d/no-debian-php
+
+RUN apt-get update && apt-get install --yes \
+  gnupg2 \
+  apt-transport-https \
+  nodejs
+
+
+RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
+echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list \
+&& apt update && apt install --yes --no-install-recommends yarn
 
 # Install dependencies.
 RUN apt-get update && \
   apt-get install --yes ${RUNTIME_DEPS} && \
-  docker-php-ext-install ${PHP_RUNTIME_DEPS} && \
   apt-get clean
 
 # Copy artifacts from build stage.
