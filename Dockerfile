@@ -1,5 +1,6 @@
 FROM php:7.2.0-apache-stretch as builder
 
+
 # The version and repository to clone koel from.
 ARG KOEL_CLONE_SOURCE=https://github.com/phanan/koel.git
 ARG KOEL_VERSION_REF=v4.2.2
@@ -12,8 +13,8 @@ ARG NODE_VERSION=node_8.x
 
 # Install dependencies to install dependencies.
 RUN apt-get update && apt-get install --yes \
-  gnupg2=2.1.18-8~deb9u1 \
-  apt-transport-https=1.4.8
+  gnupg2 \
+  apt-transport-https
 
 # Add node repository.
 RUN curl --silent https://deb.nodesource.com/gpgkey/nodesource.gpg.key \
@@ -33,7 +34,8 @@ RUN curl --silent --show-error https://dl.yarnpkg.com/debian/pubkey.gpg \
 ARG RUNTIME_DEPS="\
   libxml2-dev \
   zlib1g-dev \
-  libcurl4-openssl-dev"
+  libcurl4-openssl-dev \
+  libpng-dev"
 
 # Install dependencies.
 RUN apt-get update && \
@@ -53,7 +55,7 @@ RUN curl -sS https://getcomposer.org/installer \
 	chmod +x /usr/local/bin/composer && \
   composer --version
 
-ARG PHP_BUILD_DEPS="zip mbstring curl xml"
+ARG PHP_BUILD_DEPS="zip mbstring curl xml exif"
 
 # The repo version wasn't working so using docker-php-ext-install instead. Not
 # using docker-php-ext-install for every extension because it is badly
@@ -71,6 +73,7 @@ WORKDIR /tmp/koel
 
 # Install runtime dependencies.
 RUN composer install
+USER 0
 RUN yarn install
 
 # The runtime image.
@@ -106,7 +109,7 @@ COPY --from=builder /tmp/koel /var/www/html
 
 # Remove configuration file. All configuration should be passed in as
 # environment variables or a bind mounted file at runtime.
-RUN rm /var/www/html/.env
+RUN rm -f /var/www/html/.env
 
 # Koel makes use of Larvel's pretty URLs. This requires some additional
 # configuration: https://laravel.com/docs/4.2#pretty-urls
